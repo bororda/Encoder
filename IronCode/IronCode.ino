@@ -27,7 +27,6 @@
   D12 - cathode 2
   D11 - cathode 1
 */
-
 // Encoder settings
 #define CLK 2 // <- this pin to attachinterrupt
 #define DT A5
@@ -41,14 +40,14 @@ unsigned long debounce_timer;
 SevSeg sevseg;
 #define numDigits 3 //num of segments
 byte digitPins[] = {11, 12, 13};  //left to right
-byte segmentPins[] = {0, 1, 3, 4, 7, 8, 9, 10}; //a to g + dg
+byte segmentPins[] = {14, 15, 3, 4, 7, 8, 9, 10}; //a to g + dg
 bool resistorsOnSegments = false; // 'false' means resistors 330 Ohm are on digit pins
 byte hardwareConfig = COMMON_CATHODE;
+unsigned long timeToCheckTemp = 0;
 //Display settings
-
 //Iron settings
 #define tin 0 // Пин Датчика температуры IN Analog через LM358N
-#define pinpwm 10// порт нагревательного элемента(через транзистор)PWM
+#define pinpwm 5// порт нагревательного элемента(через транзистор)PWM
 volatile int tempSet = 270; // установленная температура
 volatile byte flag = false; //флаг для управления отображаемой температуры (tempReal или tempSet)
 int tempMin = 200; // минимальная температура
@@ -58,10 +57,8 @@ int temppwmreal = 0; // текущее значение PWM нагревател
 int tempToDisplay = 0;
 unsigned long time = 0;//переменная для хранения времени изменения температуры
 //Iron settings
-
 void setup() {
   Serial.begin (9600);
-
   //Encoder Setup
   pinMode(CLK, INPUT);
   pinMode(DT, INPUT);
@@ -70,45 +67,43 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(CLK), encoderTick, CHANGE);
   DT_last = digitalRead(CLK); // читаем начальное положение CLK (энкодер)
   // Encoder Setup
-
   //Display Setup
+  pinMode(0, OUTPUT);
+  pinMode(1, OUTPUT);
+  pinMode(3, OUTPUT);
+  pinMode(4, OUTPUT);
+  pinMode(7, OUTPUT);
+  pinMode(8, OUTPUT);
+  pinMode(9, OUTPUT);
+  pinMode(10, OUTPUT);
+
   sevseg.begin(hardwareConfig, numDigits, digitPins, segmentPins, resistorsOnSegments);
   sevseg.setBrightness(70);
   sevseg.blank();
   //Display Setup
-
-  //Display test
-  for (int i = 111; i < 999; i++) {
-    sevseg.setNumber(i);
-    sevseg.refreshDisplay();
-    delay(500);
-  }
-  //Display test
 }
-
 void loop() {
-  encoderDebug();
   show();
-  checkTemperature();
+  //checkTemperature();
 }
-
 void checkTemperature() {
-  //----------------------------------------------------------Вычисление текущей темепературы относительно установенной----------------------------------------------------------
-  if (tempReal < tempSet ) { // Если температура паяльника ниже установленной температуры то:
-    if ((tempSet - tempReal) < 16 & (tempSet - tempReal) > 6 ) temppwmreal = 150; // Проверяем разницу между у становленной температурой и текущей паяльника, и если разница меньше 10 градусов, то понижаем мощность нагрева, убираем инерцию перегрева (шим 0-255)
-    else if ((tempSet - tempReal) < 7 & (tempSet - tempReal) > 3) temppwmreal = 120;// Понижаем мощность нагрева, убираем инерцию перегрева
-    else if ((tempSet - tempReal) < 4 ) temppwmreal = 90;// Понижаем мощность нагрева, убираем инерцию перегрева
-    else temppwmreal = 230; // Иначе Подымаем мощность нагрева на максимум для быстрого нагрева до нужной температуры
+  if (!(millis() - timeToCheckTemp <= 2000)) {
+    //----------------------------------------------------------Вычисление текущей темепературы относительно установенной----------------------------------------------------------
+    if (tempReal < tempSet ) { // Если температура паяльника ниже установленной температуры то:
+      if ((tempSet - tempReal) < 16 & (tempSet - tempReal) > 6 ) temppwmreal = 150; // Проверяем разницу между у становленной температурой и текущей паяльника, и если разница меньше 10 градусов, то понижаем мощность нагрева, убираем инерцию перегрева (шим 0-255)
+      else if ((tempSet - tempReal) < 7 & (tempSet - tempReal) > 3) temppwmreal = 120;// Понижаем мощность нагрева, убираем инерцию перегрева
+      else if ((tempSet - tempReal) < 4 ) temppwmreal = 90;// Понижаем мощность нагрева, убираем инерцию перегрева
+      else temppwmreal = 230; // Иначе Подымаем мощность нагрева на максимум для быстрого нагрева до нужной температуры
+    }
+    else temppwmreal = 0;//Иначе (если температура паяльника равняется или выше установленной) Выключаем мощность нагрева, отключаем паяльник
+    analogWrite(pinpwm, temppwmreal); //Вывод в шим порт (на транзистор) значение мощности
+
+    tempReal = analogRead(tin);// считываем текущую температуру
+    tempReal = map(tempReal, 750, 1023, 20, 500); // нужно вычислить
+    tempReal = constrain(tempReal, 20, 500);
   }
-  else temppwmreal = 0;//Иначе (если температура паяльника равняется или выше установленной) Выключаем мощность нагрева, отключаем паяльник
-  analogWrite(pinpwm, temppwmreal); //Вывод в шим порт (на транзистор) значение мощности
-
-  show(); // Вывести значение переменной на экран(LED)
-
-  tempReal = analogRead(tin);// считываем текущую температуру
-  tempReal = map(tempReal, 750, 1023, 20, 500); // нужно вычислить
-  tempReal = constrain(tempReal, 20, 500);
-
+}
+void show() {
   if (flag) {
     flag = false;
     time = millis();
@@ -117,42 +112,38 @@ void checkTemperature() {
     tempToDisplay = tempSet;
   }
   else tempToDisplay = tempReal;
-}
-
-void show() {
-  sevseg.setNumber(tempToDisplay);
+  timeToCheckTemp = millis();
+  
+  sevseg.setNumber(tempToDisplay, -1);
   sevseg.refreshDisplay();
 }
-
 //Iron
 void tmpDown() {
-  if ((tempSet - 5) >= tempMin) { //будущая температура не ниже минимальной
-    tempSet -= 5;
+  if ((tempSet - 2) >= tempMin) { //будущая температура не ниже минимальной
+    tempSet -= 2;
     flag = true;
   }
 }
 void tmpUp() {
-  if ((tempSet + 5) <= tempMax) { // будущая температура не выше максимальной
-    tempSet += 5;
+  if ((tempSet + 2) <= tempMax) { // будущая температура не выше максимальной
+    tempSet += 2;
     flag = true;
   }
 }
 void tmpDownExtra() {
-  if ((tempSet - 20) >= tempMin) { //будущая температура не ниже минимальной
-    tempSet -= 20;
+  if ((tempSet - 10) >= tempMin) { //будущая температура не ниже минимальной
+    tempSet -= 10;
     flag = true;
   } else tempSet = tempMin;
 }
 void tmpUpExtra() {
-  if ((tempSet + 20) <= tempMax) { // будущая температура не выше максимальной
-    tempSet += 20;
+  if ((tempSet + 10) <= tempMax) { // будущая температура не выше максимальной
+    tempSet += 10;
     flag = true;
   } else tempSet = tempMax;
 }
 //Iron
-
-//---------------------------------------------------------------------------
-// -------------------------ОТРАБОТКА ЭНКОДЕРА-------------------------------
+//Encoder
 void encoderTick() {
   DT_now = digitalRead(CLK);          // читаем текущее положение CLK
   SW_state = !digitalRead(SW);        // читаем положение кнопки SW
@@ -201,17 +192,10 @@ void encoderTick() {
   }
   DT_last = DT_now;                  // обновить значение для энкодера
 }
-
-
 void encoderClick() {
 }
 void encoderPress() {
 }
 void encoderHold() {
 }
-
-void encoderDebug() {
-  Serial.print(tempToDisplay);
-}
-// -------------------------ОТРАБОТКА ЭНКОДЕРА-------------------------------
-//---------------------------------------------------------------------------
+//Encoder
