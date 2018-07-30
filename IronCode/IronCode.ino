@@ -56,6 +56,12 @@ int tempReal = 20; // переменная датчика текущей тем�
 int temppwmreal = 0; // текущее значение PWM нагревателя
 int tempToDisplay = 0;
 unsigned long time = 0;//переменная для хранения времени изменения температуры
+  //Temperature boost
+byte flagTempBoost = false; //флаг управления температурным бустом
+unsigned long timeTempBoost = 15000; //время температурного буста
+unsigned long timeTempBoostStarted = 0; //переменная для хранения времени начала буста
+int tempBoostBackup = 0; //переменная для хранения оригинальной температуры
+  //Temperature boost
 //Iron settings
 void setup() {
   Serial.begin (9600);
@@ -75,11 +81,17 @@ void setup() {
 }
 void loop() {
   show();
-  //checkTemperature();
+  checkTemperature();
 }
 void checkTemperature() {
   if (!(millis() - timeToCheckTemp <= 2000)) {
-    //----------------------------------------------------------Вычисление текущей темепературы относительно установенной----------------------------------------------------------
+    //--------Boost check ---------------------
+	if(flagTempBoost && ((millis() - timeTempBoostStarted) >= timeTempBoost)) {
+	  tempSet = tempBoostBackup;
+	  flagTempBoost = false;
+	}
+	//--------Boost check ---------------------
+    //--------Вычисление текущей темепературы относительно установенной -------------------------------------------
     if (tempReal < tempSet ) { // Если температура паяльника ниже установленной температуры то:
       if ((tempSet - tempReal) < 16 & (tempSet - tempReal) > 6 ) temppwmreal = 150; // Проверяем разницу между у становленной температурой и текущей паяльника, и если разница меньше 10 градусов, то понижаем мощность нагрева, убираем инерцию перегрева (шим 0-255)
       else if ((tempSet - tempReal) < 7 & (tempSet - tempReal) > 3) temppwmreal = 120;// Понижаем мощность нагрева, убираем инерцию перегрева
@@ -115,6 +127,12 @@ void adjustTemp(int delta){
     flag = true;
   }
 }
+void tempBoostEnable(){
+  timeTempBoostStarted = millis();
+  flagTempBoost = true;
+  tempBoostBackup = tempSet;
+  tempSet = tempMax;
+}
 //Iron
 //Encoder
 void encoderTick() {
@@ -141,6 +159,7 @@ void encoderTick() {
     if (!turn_flag) { // если кнопка отпущена и ручка не поворачивалась
       turn_flag = 0;
       encoderHold();
+	  //tempBoostEnable(); //TEMPORAL STUB for the temperature boost functionality
     }
   }
   if (!SW_state && butt_flag && hold_flag) {
@@ -170,5 +189,7 @@ void encoderClick() {
 void encoderPress() {
 }
 void encoderHold() {
+  Serial.println("TEMPORAL STUB for the temperature boost functionality");
+  Serial.println("To enable temperature boost functionality uncomment the call to tempBoostEnable() function in encoderTick()");
 }
 //Encoder
