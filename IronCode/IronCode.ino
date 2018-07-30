@@ -68,15 +68,6 @@ void setup() {
   DT_last = digitalRead(CLK); // читаем начальное положение CLK (энкодер)
   // Encoder Setup
   //Display Setup
-  pinMode(0, OUTPUT);
-  pinMode(1, OUTPUT);
-  pinMode(3, OUTPUT);
-  pinMode(4, OUTPUT);
-  pinMode(7, OUTPUT);
-  pinMode(8, OUTPUT);
-  pinMode(9, OUTPUT);
-  pinMode(10, OUTPUT);
-
   sevseg.begin(hardwareConfig, numDigits, digitPins, segmentPins, resistorsOnSegments);
   sevseg.setBrightness(70);
   sevseg.blank();
