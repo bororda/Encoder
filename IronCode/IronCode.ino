@@ -1,8 +1,8 @@
 /*Display
   Пины подключения индикаторов
   ANODES(CATHODES):
-  D0 - a
-  D1 - b
+  D14 - a
+  D15 - b
   D3 - c
   D4 - d
   D7 - e
@@ -46,7 +46,7 @@ byte hardwareConfig = COMMON_CATHODE;
 unsigned long timeToCheckTemp = 0;
 //Display settings
 //Iron settings
-#define tin 0 // Пин Датчика температуры IN Analog через LM358N
+#define tin 7 // Пин Датчика температуры IN Analog через LM358N
 #define pinpwm 5// порт нагревательного элемента(через транзистор)PWM
 volatile int tempSet = 270; // установленная температура
 volatile byte flag = false; //флаг для управления отображаемой температуры (tempReal или tempSet)
