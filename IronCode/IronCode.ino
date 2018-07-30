@@ -9,7 +9,6 @@
   D8 - f
   D9 - g
   D10 - dp
-
     a11
    *******
   *      *
@@ -21,7 +20,6 @@
   1  *d2*
 ******** # dp3
   Cathodes (dig 1 -> 3): 12, 9, 8
-
   CATHODES(ANODES):
   D13 - cathode 3
   D12 - cathode 2
@@ -33,6 +31,8 @@
 #define SW A4
 boolean DT_now, DT_last, SW_state, hold_flag, butt_flag, turn_flag;
 unsigned long debounce_timer;
+#define tmpIncrement 2
+#define tmpExtraIncrement 10
 // Encoder settings
 
 //Display settings
@@ -109,29 +109,11 @@ void show() {
   sevseg.refreshDisplay();
 }
 //Iron
-void tmpDown() {
-  if ((tempSet - 2) >= tempMin) { //будущая температура не ниже минимальной
-    tempSet -= 2;
+void adjustTemp(int delta){
+  if (((tempSet - delta) >= tempMin) && ((tempSet + delta) <= tempMax)) { //будущая температура в пределах мин и макс
+    tempSet += delta;
     flag = true;
   }
-}
-void tmpUp() {
-  if ((tempSet + 2) <= tempMax) { // будущая температура не выше максимальной
-    tempSet += 2;
-    flag = true;
-  }
-}
-void tmpDownExtra() {
-  if ((tempSet - 10) >= tempMin) { //будущая температура не ниже минимальной
-    tempSet -= 10;
-    flag = true;
-  } else tempSet = tempMin;
-}
-void tmpUpExtra() {
-  if ((tempSet + 10) <= tempMax) { // будущая температура не выше максимальной
-    tempSet += 10;
-    flag = true;
-  } else tempSet = tempMax;
 }
 //Iron
 //Encoder
@@ -168,15 +150,15 @@ void encoderTick() {
   if (DT_now != DT_last) {            // если предыдущее и текущее положение CLK разные, значит был поворот
     if (digitalRead(DT) != DT_now) {  // если состояние DT отличается от CLK, значит крутим по часовой стрелке
       if (SW_state) {          // если кнопка энкодера нажата
-        tmpUpExtra();
+        adjustTemp(10);
       } else {                  // если кнопка энкодера не нажата
-        tmpUp();
+        adjustTemp(2);
       }
     } else {                          // если совпадают, значит против часовой
       if (SW_state) {          // если кнопка энкодера нажата
-        tmpDownExtra();
+        adjustTemp(-10);
       } else {                  // если кнопка энкодера не нажата
-        tmpDown();
+        adjustTemp(-2);
       }
     }
     turn_flag = 1;                    // флаг что был поворот ручки энкодера
