@@ -28,9 +28,9 @@
 // Encoder settings
 #define CLK 2 // <- this pin to attachinterrupt
 #define DT A5
-#define SW A4
-boolean DT_now, DT_last, SW_state, hold_flag, butt_flag, turn_flag;
-unsigned long debounce_timer;
+#define SW 3 // <- this pin to attachinterrupt
+bool DT_now, DT_last, SW_state, turn_flag;
+unsigned long debounce;
 #define tmpIncrement 2
 #define tmpExtraIncrement 10
 // Encoder settings
@@ -40,10 +40,10 @@ unsigned long debounce_timer;
 SevSeg sevseg;
 #define numDigits 3 //num of segments
 byte digitPins[] = {11, 12, 13};  //left to right
-byte segmentPins[] = {14, 15, 3, 4, 7, 8, 9, 10}; //a to g + dg
+byte segmentPins[] = {14, 15, 4, 5, 7, 8, 9, 10}; //a to g + dg
 bool resistorsOnSegments = false; // 'false' means resistors 330 Ohm are on digit pins
 byte hardwareConfig = COMMON_CATHODE;
-unsigned long timeToCheckTemp = 0;
+unsigned long lastTimeCheckedTemp = 0;
 //Display settings
 //Iron settings
 #define tin 7 // Пин Датчика температуры IN Analog через LM358N
@@ -56,12 +56,12 @@ int tempReal = 20; // переменная датчика текущей тем�
 int temppwmreal = 0; // текущее значение PWM нагревателя
 int valueToDisplay = 0;
 unsigned long time = 0;//переменная для хранения времени изменения температуры
-  //Temperature boost
+//Temperature boost
 byte flagTempBoost = false; //флаг управления температурным бустом
-unsigned long timeTempBoost = 15000; //время температурного буста
+unsigned long timeTempBoost = 20000; //время температурного буста
 unsigned long timeTempBoostStarted = 0; //переменная для хранения времени начала буста
 int tempBoostBackup = 0; //переменная для хранения оригинальной температуры
-  //Temperature boost
+//Temperature boost
 //Iron settings
 void setup() {
   Serial.begin (9600);
@@ -71,6 +71,7 @@ void setup() {
   pinMode(SW, INPUT_PULLUP);
   // настройка прерывания. Для работы достаточно одного прерывания на CLK!
   attachInterrupt(digitalPinToInterrupt(CLK), encoderTick, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(SW), encoderTick, CHANGE);
   DT_last = digitalRead(CLK); // читаем начальное положение CLK (энкодер)
   // Encoder Setup
   //Display Setup
@@ -84,14 +85,13 @@ void loop() {
   checkTemperature();
 }
 void checkTemperature() {
-  if ((millis() - timeToCheckTemp) >= 2000) {
+  if ((millis() - lastTimeCheckedTemp) >= 2000) {
     //--------Boost check ---------------------
-	if(flagTempBoost && ((millis() - timeTempBoostStarted) >= timeTempBoost)) {// if bost time has expired
-	  tempSet = tempBoostBackup;//switch to prev temp
-	  flag = true; //Display the new target temp
-	  flagTempBoost = false;// Turn off the boost
-	}
-	//--------Boost check ---------------------
+    if (flagTempBoost && ((millis() - timeTempBoostStarted) >= timeTempBoost)) { // if bost time has expired
+      tempBoostDisable();// Turn off the boost
+      showTargetTemp();
+    }
+    //--------Boost check ---------------------
     //--------Вычисление текущей темепературы относительно установенной -------------------------------------------
     if (tempReal < tempSet ) { // Если температура паяльника ниже установленной температуры то:
       if ((tempSet - tempReal) < 16 & (tempSet - tempReal) > 6 ) temppwmreal = 150; // Проверяем разницу между у становленной температурой и текущей паяльника, и если разница меньше 10 градусов, то понижаем мощность нагрева, убираем инерцию перегрева (шим 0-255)
@@ -105,42 +105,51 @@ void checkTemperature() {
     tempReal = analogRead(tin);// считываем текущую температуру
     tempReal = map(tempReal, 750, 1023, 20, 500); // нужно вычислить
     tempReal = constrain(tempReal, 20, 500);
-	
-    timeToCheckTemp = millis();
+
+    lastTimeCheckedTemp = millis();
   }
 }
 void show() {
-  if (flag) {//Display the target temp for 2 sec after it's been set
+  if (flag) { //Display the target temp for 2 sec after it's been set
     if (millis() - time <= 2000) {
       valueToDisplay = tempSet;
     }
     else if (!(millis() - time <= 2000)) {
       valueToDisplay = tempReal;
-	  flag = false;
+      flag = false;
     }
   }
-  else if(flagTempBoost && !flag) {//Boost is on and the target temp displaying went off - DISPLAY BOOST COUNTDOWN
-    valueToDisplay = (millis() - timeTempBoostStarted)/1000;
+  else if (flagTempBoost && !flag) { //Boost is on and the target temp displaying went off - DISPLAY BOOST COUNTDOWN
+    valueToDisplay = (timeTempBoost - (millis() - timeTempBoostStarted)) / 1000;
   }
-   else valueToDisplay = tempReal;//Default real temp to be displayed
-   
+  else valueToDisplay = tempReal;//Default real temp to be displayed
+
   sevseg.setNumber(valueToDisplay, -1);
   sevseg.refreshDisplay();
 }
-//Iron
-void adjustTemp(int delta){
-  if (((tempSet - delta) >= tempMin) && ((tempSet + delta) <= tempMax)) { //будущая температура в пределах мин и макс
-    tempSet += delta;
-    flag = true;
-	time = millis();
-  }
+void showTargetTemp() { // enables the tempSet to be displayed for 2 secs
+  flag = true;
+  time = millis();
 }
-void tempBoostEnable(){
+//Iron
+void adjustTemp(int delta) {
+  if ((((tempSet - delta) > tempMin) && delta < 0) || (((tempSet + delta) <= tempMax) && delta > 0)) { //будущая температура в пределах мин и макс
+    tempSet += delta;
+  }
+  if (tempSet < tempMin) tempSet = tempMin;
+  if (tempSet > tempMax) tempSet = tempMax;
+  showTargetTemp();
+}
+void tempBoostEnable() {
   timeTempBoostStarted = millis();
-  flagTempBoost = true;
-  flag = true; // enables the tempSet to be displayed for 2 secs
   tempBoostBackup = tempSet;
   tempSet = tempMax;
+  flagTempBoost = true;
+  showTargetTemp();
+}
+void tempBoostDisable() {
+  tempSet = tempBoostBackup;//switch to prev temp
+  flagTempBoost = false;
 }
 //Iron
 //Encoder
@@ -148,34 +157,17 @@ void encoderTick() {
   DT_now = digitalRead(CLK);          // читаем текущее положение CLK
   SW_state = !digitalRead(SW);        // читаем положение кнопки SW
   // отработка нажатия кнопки энкодера
-  if (SW_state && !butt_flag && millis() - debounce_timer > 200) {
-    hold_flag = 0;
-    butt_flag = 1;
-    turn_flag = 0;
-    debounce_timer = millis();
+  if (SW_state && millis() - debounce > 200) { //статус кнопки и защита от дребезга
+    debounce = millis();
     encoderClick();
+    turn_flag = 0; // чтобы не включился режим удержания при нажатии и повороте
   }
-  if (!SW_state && butt_flag && millis() - debounce_timer > 200 && millis() - debounce_timer < 500) {
-    butt_flag = 0;
-    if (!turn_flag && !hold_flag) { // если кнопка отпущена и ручка не поворачивалась
-      turn_flag = 0;
-      encoderPress();
-    }
-    debounce_timer = millis();
+  if (!SW_state && !turn_flag && millis() - debounce > 1000 && millis() - debounce < 3000) { // кнопку отпустили и от нажатия прошло от 1 до 3 сек.
+    encoderHold();
   }
-  if (SW_state && butt_flag && millis() - debounce_timer > 800 && !hold_flag) {
-    hold_flag = 1;
-    if (!turn_flag) { // если кнопка отпущена и ручка не поворачивалась
-      turn_flag = 0;
-      encoderHold();
-	  //tempBoostEnable(); //TEMPORAL STUB for the temperature boost functionality
-    }
-  }
-  if (!SW_state && butt_flag && hold_flag) {
-    butt_flag = 0;
-    debounce_timer = millis();
-  }
+  // вращение ручки
   if (DT_now != DT_last) {            // если предыдущее и текущее положение CLK разные, значит был поворот
+    turn_flag = 1;
     if (digitalRead(DT) != DT_now) {  // если состояние DT отличается от CLK, значит крутим по часовой стрелке
       if (SW_state) {          // если кнопка энкодера нажата
         adjustTemp(tmpExtraIncrement);
@@ -189,16 +181,13 @@ void encoderTick() {
         adjustTemp(-tmpIncrement);
       }
     }
-    turn_flag = 1;                    // флаг что был поворот ручки энкодера
   }
   DT_last = DT_now;                  // обновить значение для энкодера
 }
 void encoderClick() {
-}
-void encoderPress() {
+  Serial.println("A stub: no need in click function at the time");
 }
 void encoderHold() {
-  Serial.println("TEMPORAL STUB for the temperature boost functionality");
-  Serial.println("To enable temperature boost functionality uncomment the call to tempBoostEnable() function in encoderTick()");
+  tempBoostEnable();
 }
 //Encoder
